@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BPM Counter with UR, KPS, and Key Display</title>
+    <title>BPM Counter with UR, KPS, and Keys Pressed</title>
     <style>
         body {
             display: flex;
@@ -62,12 +62,15 @@
         <p id="bpm-display">BPM : 0</p>
         <p class="stats" id="kps-display">KPS : 0.00</p>
         <p class="stats" id="ur-display">Unstable Rate : 0.00</p>
+        <p class="stats" id="keys-display">Keys Pressed : 0</p>
     </div>
 
     <div id="key-display-container"></div>
 
     <script>
         let keystrokes = []; // Historique des timestamps des frappes
+        let totalKeys = 0; // Nombre total de touches pressées
+        let lastKeyPressTime = performance.now(); // Temps du dernier appui sur une touche
         let targetBpm = 0; // BPM calculé
         let currentBpm = 0; // BPM affiché
         let targetKps = 0; // KPS calculé
@@ -79,6 +82,7 @@
         const bpmDisplay = document.getElementById('bpm-display');
         const kpsDisplay = document.getElementById('kps-display');
         const urDisplay = document.getElementById('ur-display');
+        const keysDisplay = document.getElementById('keys-display');
         const keyDisplayContainer = document.getElementById('key-display-container');
 
         // Fonction pour calculer le BPM, KPS et UR en fonction des frappes récentes
@@ -123,6 +127,15 @@
             requestAnimationFrame(updateDisplayedStats); // Continue l'animation
         };
 
+        // Réinitialisation des Keys Pressed après 2 secondes d'inactivité
+        const checkInactivity = () => {
+            const now = performance.now();
+            if (now - lastKeyPressTime > 2000) {
+                totalKeys = 0; // Réinitialise le compteur de touches
+                keysDisplay.innerText = `Keys Pressed : ${totalKeys}`;
+            }
+        };
+
         // Ajoute une touche à l'affichage ou réinitialise son animation et durée
         const addKeyToDisplay = (key) => {
             if (activeKeys.has(key)) {
@@ -164,9 +177,15 @@
         // Écoute les frappes clavier
         document.addEventListener('keydown', (event) => {
             keystrokes.push(performance.now()); // Enregistre le timestamp de la frappe
+            totalKeys++; // Incrémente le compteur de touches pressées
+            lastKeyPressTime = performance.now(); // Met à jour le temps du dernier appui
             calculateStats(); // Met à jour les stats
             addKeyToDisplay(event.key); // Affiche la touche pressée
+            keysDisplay.innerText = `Keys Pressed : ${totalKeys}`;
         });
+
+        // Vérifie l'inactivité toutes les 100 ms
+        setInterval(checkInactivity, 100);
 
         // Lancer l'animation initiale
         updateDisplayedStats();
