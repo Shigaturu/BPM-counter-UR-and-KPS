@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BPM Counter with UR, KPS, and Key Display</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: white;
+        }
+
+        .stats {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+
+        #bpm-display {
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        #key-display-container {
+            display: flex;
+            flex-direction: row;
+            margin-top: 20px;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .key {
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            background-color: #007bff;
+            animation: fadeOut 1s ease-in-out forwards;
+        }
+
+        @keyframes fadeOut {
+            0% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <p id="bpm-display">BPM : 0</p>
+        <p class="stats" id="kps-display">KPS : 0.00</p>
+        <p class="stats" id="ur-display">Unstable Rate : 0.00</p>
+    </div>
+
+    <div id="key-display-container"></div>
+
+    <script>
+        let keystrokes = []; // Historique des timestamps des frappes
+        let targetBpm = 0; // BPM calculé
+        let currentBpm = 0; // BPM affiché
+        let targetKps = 0; // KPS calculé
+        let currentKps = 0; // KPS affiché
+        let targetUr = 0; // UR calculé
+        let currentUr = 0; // UR affiché
+        let activeKeys = new Map(); // Map pour gérer les touches affichées
+
+        const bpmDisplay = document.getElementById('bpm-display');
+        const kpsDisplay = document.getElementById('kps-display');
+        const urDisplay = document.getElementById('ur-display');
+        const keyDisplayContainer = document.getElementById('key-display-container');
+
+        // Fonction pour calculer le BPM, KPS et UR en fonction des frappes récentes
+        const calculateStats = () => {
+            const now = performance.now(); // Temps actuel en ms
+            // Garde uniquement les frappes des 2 dernières secondes
+            keystrokes = keystrokes.filter(timestamp => now - timestamp <= 2000);
+
+            if (keystrokes.length > 1) {
+                // Durée moyenne entre les frappes
+                const intervals = keystrokes.slice(1).map((time, i) => time - keystrokes[i]);
+                const averageInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+
+                // Calcul du BPM (15 000 ms par minute, adapté à osu!)
+                targetBpm = 15000 / averageInterval;
+
+                // Calcul du KPS (nombre de frappes par seconde)
+                const seconds = (keystrokes[keystrokes.length - 1] - keystrokes[0]) / 1000;
+                targetKps = seconds > 0 ? keystrokes.length / seconds : 0;
+
+                // Calcul de l'Unstable Rate (écart-type des intervalles)
+                const variance = intervals.map(interval => Math.pow(interval - averageInterval, 2))
+                                           .reduce((a, b) => a + b, 0) / intervals.length;
+                targetUr = Math.sqrt(variance) * 10; // Multiplier par 10 pour correspondre à osu!
+            } else {
+                targetBpm = 0;
+                targetKps = 0;
+                targetUr = 0;
+            }
+        };
+
+        // Animation fluide des valeurs affichées
+        const updateDisplayedStats = () => {
+            currentBpm += (targetBpm - currentBpm) * 0.1; // Interpolation pour le BPM
+            currentKps += (targetKps - currentKps) * 0.1; // Interpolation pour le KPS
+            currentUr += (targetUr - currentUr) * 0.1; // Interpolation pour l'UR
+
+            bpmDisplay.innerText = `BPM : ${Math.round(currentBpm)}`;
+            kpsDisplay.innerText = `KPS : ${currentKps.toFixed(2)}`;
+            urDisplay.innerText = `Unstable Rate : ${currentUr.toFixed(2)}`;
+
+            requestAnimationFrame(updateDisplayedStats); // Continue l'animation
+        };
+
+        // Ajoute une touche à l'affichage ou réinitialise son animation et durée
+        const addKeyToDisplay = (key) => {
+            if (activeKeys.has(key)) {
+                // Si la touche existe déjà, prolonger sa durée
+                const { element, timeout } = activeKeys.get(key);
+
+                // Réinitialiser l'animation
+                element.style.animation = 'none'; // Supprime l'animation
+                void element.offsetWidth; // Force un reflow pour réappliquer l'animation
+                element.style.animation = ''; // Réapplique l'animation CSS
+
+                // Réinitialiser le timer
+                clearTimeout(timeout); // Annule le précédent timer
+                const newTimeout = setTimeout(() => {
+                    element.remove();
+                    activeKeys.delete(key);
+                }, 1000); // 1 seconde
+
+                // Met à jour le timeout dans la Map
+                activeKeys.set(key, { element, timeout: newTimeout });
+            } else {
+                // Si la touche n'existe pas, l'ajouter
+                const element = document.createElement('div');
+                element.className = 'key';
+                element.innerText = key.toUpperCase(); // Affiche la touche en majuscule
+                keyDisplayContainer.appendChild(element);
+
+                // Créer un timer pour retirer la touche après 1 seconde
+                const timeout = setTimeout(() => {
+                    element.remove();
+                    activeKeys.delete(key);
+                }, 1000); // 1 seconde
+
+                // Ajouter l'élément et le timer dans la Map
+                activeKeys.set(key, { element, timeout });
+            }
+        };
+
+        // Écoute les frappes clavier
+        document.addEventListener('keydown', (event) => {
+            keystrokes.push(performance.now()); // Enregistre le timestamp de la frappe
+            calculateStats(); // Met à jour les stats
+            addKeyToDisplay(event.key); // Affiche la touche pressée
+        });
+
+        // Lancer l'animation initiale
+        updateDisplayedStats();
+    </script>
+</body>
+</html>
